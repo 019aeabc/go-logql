@@ -139,7 +139,7 @@ func TestLogQuery(t *testing.T) {
 			query: func() *LogQuery {
 				return NewLogQuery().Eq("job", "api").JSON().LabelEqual("level", "error")
 			},
-			want: `{job="api"} | json | level == "error"`,
+			want: `{job="api"} | json | level = "error"`,
 		},
 		{
 			name: "label not equal filter",
@@ -244,7 +244,7 @@ func TestLogQuery(t *testing.T) {
 					LabelGreaterEq("status", "400").
 					LineFormat("{{.msg}}")
 			},
-			want: `{job="api", env="prod"} |= "error" | json | level == "error" | status >= 400 | line_format "{{.msg}}"`,
+			want: `{job="api", env="prod"} |= "error" | json | level = "error" | status >= 400 | line_format "{{.msg}}"`,
 		},
 		{
 			name:    "empty selector error",

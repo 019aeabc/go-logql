@@ -25,7 +25,7 @@ func ExampleLogQuery_parsedAndFiltered() {
 		LabelGreaterEq("status", "400")
 
 	fmt.Println(q.String())
-	// Output: {job="api"} | json | level == "error" | status >= 400
+	// Output: {job="api"} | json | level = "error" | status >= 400
 }
 
 func ExampleMetricQuery_rate() {

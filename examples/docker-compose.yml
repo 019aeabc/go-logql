@@ -5,6 +5,7 @@ services:
       - "3100:3100"
     volumes:
       - ./loki-config.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
     command: -config.file=/etc/loki/local-config.yaml
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--output-document=-", "http://localhost:3100/ready"]
@@ -23,30 +24,21 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       loki:
         condition: service_healthy
 
-  # Provisions the Loki data source in Grafana automatically
-  grafana-provisioner:
-    image: curlimages/curl:8.12.1
+  log-simulator:
+    image: alpine:3.21
     depends_on:
-      - grafana
-    restart: "no"
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        sleep 5
-        curl -s -X POST http://grafana:3000/api/datasources \
-          -H "Content-Type: application/json" \
-          -u admin:admin \
-          -d '{
-            "name": "Loki",
-            "type": "loki",
-            "url": "http://loki:3100",
-            "access": "proxy",
-            "isDefault": true
-          }' || true
+      loki:
+        condition: service_healthy
+    volumes:
+      - ./log-simulator.sh:/app/log-simulator.sh:ro
+    entrypoint: ["/bin/sh", "/app/log-simulator.sh"]
+    restart: unless-stopped
 
 volumes:
+  loki-data:
   grafana-data:

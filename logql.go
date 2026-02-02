@@ -45,14 +45,17 @@ type labelFilterStage struct {
 }
 
 func (s labelFilterStage) String() string {
-	// For string comparison operators that use regex or equality, quote the value
 	switch s.filter.Op {
-	case FilterEqual, FilterNotEqual:
-		return fmt.Sprintf(`| %s %s "%s"`, s.filter.Label, string(s.filter.Op), s.filter.Value)
+	case FilterEqual:
+		// LogQL string equality uses single "=" (not "=="), with quoted value.
+		return fmt.Sprintf(`| %s = "%s"`, s.filter.Label, s.filter.Value)
+	case FilterNotEqual:
+		// LogQL string not-equal uses "!=", with quoted value.
+		return fmt.Sprintf(`| %s != "%s"`, s.filter.Label, s.filter.Value)
 	case FilterRegexp, FilterNotRegexp:
 		return fmt.Sprintf(`| %s %s "%s"`, s.filter.Label, string(s.filter.Op), s.filter.Value)
 	default:
-		// Numeric comparisons: render value as-is
+		// Numeric comparisons (>, >=, <, <=): render value as-is (unquoted).
 		return fmt.Sprintf("| %s %s %s", s.filter.Label, string(s.filter.Op), s.filter.Value)
 	}
 }

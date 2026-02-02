@@ -102,7 +102,7 @@ q = logql.NewLogQuery().Eq("job", "api").Unpack()
 q := logql.NewLogQuery().
     Eq("job", "api").
     JSON().
-    LabelEqual("level", "error").     // | level == "error"
+    LabelEqual("level", "error").     // | level = "error"
     LabelNotEqual("method", "GET").   // | method != "GET"
     LabelGreater("status", "400").    // | status > 400
     LabelGreaterEq("status", "400"). // | status >= 400
@@ -253,74 +253,142 @@ _, err := q.Build()
 
 ---
 
-## Running Loki Locally with Docker
+## Try It — Loki + Grafana + Live Logs (Docker)
 
-The `examples/` directory contains a complete Docker Compose setup to run Loki and Grafana locally, along with a Go program that demonstrates building LogQL queries and sending them to Loki.
+The `examples/` directory ships with everything you need to see `go-logql` in action: a local Loki instance, Grafana with the Loki datasource pre-configured, and a **continuously running log simulator** that pushes realistic JSON logs from multiple services so you always have live data to query.
 
-### Setup
+### What's Inside
 
 ```
 examples/
-├── docker-compose.yml      # Loki + Grafana + log generator
-├── loki-config.yml         # Minimal Loki configuration
-└── main.go                 # Example Go program using go-logql
+├── docker-compose.yml                      # Loki + Grafana + log-simulator
+├── loki-config.yml                         # Minimal Loki config
+├── log-simulator.sh                        # Generates logs every 2s
+├── grafana/provisioning/datasources/
+│   └── loki.yml                            # Auto-configures Loki datasource
+├── main.go                                 # Example Go program using go-logql
+└── go.mod
 ```
 
-### 1. Start Loki
+### Services
+
+| Container | Port | Description |
+|---|---|---|
+| **loki** | `localhost:3100` | Grafana Loki log aggregation backend |
+| **grafana** | `localhost:3000` | Grafana UI (auto-login, no password needed) |
+| **log-simulator** | — | Pushes JSON logs to Loki every 2 seconds |
+
+### Simulated Log Streams
+
+The log simulator generates realistic JSON log lines for these services:
+
+| Stream labels | Sample log fields |
+|---|---|
+| `{job="api", env="prod", instance="api-1\|api-2"}` | `level`, `status`, `msg`, `latency_ms`, `method`, `path` |
+| `{job="api", env="staging", instance="api-staging-1"}` | Same fields as prod api |
+| `{job="web", env="prod", instance="web-1"}` | `level`, `status`, `msg`, `latency_ms` |
+| `{job="auth", env="prod", instance="auth-1"}` | `level`, `status`, `msg`, `latency_ms` |
+| `{job="worker", env="prod", instance="worker-1"}` | `level`, `msg`, `latency_ms`, `queue` |
+
+Each batch includes a mix of `info`, `warn`, and `error` level logs with realistic HTTP status codes and latency values.
+
+### 1. Start Everything
 
 ```bash
 cd examples
 docker compose up -d
 ```
 
-This starts:
-- **Loki** on `http://localhost:3100`
-- **Grafana** on `http://localhost:3000` (admin/admin)
-
-### 2. Push Some Logs
-
-You can push logs to Loki using its HTTP API. Here's a quick way using curl:
+Wait for all three containers to be healthy (Grafana waits for Loki automatically, the simulator waits for Loki too):
 
 ```bash
-curl -X POST "http://localhost:3100/loki/api/v1/push" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "streams": [
-      {
-        "stream": { "job": "api", "env": "prod", "instance": "api-1" },
-        "values": [
-          ["'"$(date +%s)"'000000000", "{\"level\":\"error\",\"status\":500,\"msg\":\"internal server error\",\"latency_ms\":120}"],
-          ["'"$(date +%s)"'000000001", "{\"level\":\"info\",\"status\":200,\"msg\":\"request completed\",\"latency_ms\":15}"],
-          ["'"$(date +%s)"'000000002", "{\"level\":\"error\",\"status\":502,\"msg\":\"bad gateway\",\"latency_ms\":5000}"],
-          ["'"$(date +%s)"'000000003", "{\"level\":\"warn\",\"status\":429,\"msg\":\"rate limited\",\"latency_ms\":2}"],
-          ["'"$(date +%s)"'000000004", "{\"level\":\"info\",\"status\":200,\"msg\":\"health check ok\",\"latency_ms\":1}"]
-        ]
-      },
-      {
-        "stream": { "job": "web", "env": "prod", "instance": "web-1" },
-        "values": [
-          ["'"$(date +%s)"'000000005", "{\"level\":\"info\",\"status\":200,\"msg\":\"page rendered\",\"latency_ms\":45}"],
-          ["'"$(date +%s)"'000000006", "{\"level\":\"error\",\"status\":500,\"msg\":\"template error\",\"latency_ms\":200}"]
-        ]
-      }
-    ]
-  }'
+docker compose ps
 ```
 
-### 3. Run the Example Program
+### 2. Open Grafana Explore
+
+1. Go to http://localhost:3000
+2. Click **Explore** in the left sidebar (compass icon)
+3. The **Loki** datasource is already selected
+4. You should see logs flowing in immediately
+
+### 3. Try These Queries in Grafana
+
+Copy-paste any of these into the Explore query editor. Switch between **Logs** and **Metric** visualization modes to see different views.
+
+**Browse all API logs:**
+```
+{job="api"}
+```
+
+**Filter errors only:**
+```
+{job="api"} |= "error"
+```
+
+**Parse JSON and filter by status:**
+```
+{job="api"} | json | status >= 500
+```
+
+**Errors across all services:**
+```
+{job=~".+"} | json | level = "error"
+```
+
+**Rate of logs per service (metric):**
+```
+sum by (job) (rate({job=~".+"} [1m]))
+```
+
+**Error rate per service (metric):**
+```
+sum by (job) (rate({job=~".+"} |~ "error" [1m]))
+```
+
+**P95 latency by service (unwrap metric):**
+```
+quantile_over_time(0.95, {job=~".+"} | json | unwrap latency_ms [1m]) by (job)
+```
+
+**Error rate percentage (binary expression):**
+```
+(sum(rate({job="api"} |= "error" [5m])) / sum(rate({job="api"} [5m]))) * 100
+```
+
+**Top 3 noisiest instances:**
+```
+topk(3, rate({job=~".+"} [5m]))
+```
+
+**Worker queue logs only:**
+```
+{job="worker"} | json | queue == "payments"
+```
+
+### 4. Run the Example Go Program
+
+The example program uses `go-logql` to build queries programmatically and executes them against your local Loki:
 
 ```bash
 cd examples
 go run main.go
 ```
 
-The program builds several LogQL queries and executes them against the local Loki instance.
+This will:
+- Push an additional batch of sample logs
+- Build 11 different LogQL queries using the `go-logql` builder
+- Execute each query against Loki and print results
 
-### 4. Explore in Grafana
+### 5. Watch Simulator Logs
 
-Open http://localhost:3000, go to **Explore**, select the **Loki** data source, and paste any of the generated queries.
+To see the simulator working in real time:
 
-### 5. Cleanup
+```bash
+docker compose logs -f log-simulator
+```
+
+### 6. Cleanup
 
 ```bash
 cd examples
@@ -349,7 +417,7 @@ docker compose down -v
 | `.Regexp(pattern)` | `\| regexp "pattern"` |
 | `.Pattern(pattern)` | `\| pattern "pattern"` |
 | `.Unpack(labels...)` | `\| unpack [labels]` |
-| `.LabelEqual(label, value)` | `\| label == "value"` |
+| `.LabelEqual(label, value)` | `\| label = "value"` |
 | `.LabelNotEqual(label, value)` | `\| label != "value"` |
 | `.LabelGreater(label, value)` | `\| label > value` |
 | `.LabelGreaterEq(label, value)` | `\| label >= value` |
