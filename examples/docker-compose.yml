@@ -1,0 +1,52 @@
+services:
+  loki:
+    image: grafana/loki:3.4.2
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--output-document=-", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  # Provisions the Loki data source in Grafana automatically
+  grafana-provisioner:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      - grafana
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 5
+        curl -s -X POST http://grafana:3000/api/datasources \
+          -H "Content-Type: application/json" \
+          -u admin:admin \
+          -d '{
+            "name": "Loki",
+            "type": "loki",
+            "url": "http://loki:3100",
+            "access": "proxy",
+            "isDefault": true
+          }' || true
+
+volumes:
+  grafana-data:
