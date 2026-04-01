@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	logql "github.com/apoorvgarg/go-logql"
+	logql "github.com/019aeabc/go-logql"
 )
 
 func ExampleLogQuery_simple() {

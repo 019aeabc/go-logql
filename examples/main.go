@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	logql "github.com/apoorvgarg/go-logql"
+	logql "github.com/019aeabc/go-logql"
 )
 
 const lokiURL = "http://localhost:3100"
