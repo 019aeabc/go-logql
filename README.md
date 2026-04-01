@@ -10,7 +10,7 @@ A pure Go query builder for [Grafana Loki's LogQL](https://grafana.com/docs/loki
 ## Installation
 
 ```bash
-go get github.com/apoorvgarg/go-logql
+go get github.com/019aeabc/go-logql
 ```
 
 ## Quick Start
